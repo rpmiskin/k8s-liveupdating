@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: monitor-pod
+  labels:
+    app: monitor
+spec:
+  containers:
+    - name: monitor-container
+      image: local/watcher
+      imagePullPolicy: Never
