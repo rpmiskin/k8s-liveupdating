@@ -1,0 +1,12 @@
+spec:
+  template:
+    spec:
+      volumes:
+        - name: monitor-storage
+          persistentVolumeClaim:
+            claimName: monitor-claim
+      containers:
+        - name: monitor-container
+          volumeMounts:
+            - mountPath: "/usr/src/app/monitor"
+              name: monitor-storage

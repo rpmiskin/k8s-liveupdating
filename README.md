@@ -1,11 +1,17 @@
 # Demonstration of using hostPath to live update an app in Kubernetes
 
-## Problem Statement
+This repository is an experiment to solve a problem with developing a NodeJS micro service based
+system that will be deployed to Kubernetes.
 
-Show live updating of code in k8s micro service based system running locally
-in Docker Desktop for Mac.
-Code live in a lerna monorepo, which means that there will be symlinks within
-the node_modules folders.
+To have a representative deployment the team wish to use the same Helm charts to deploy to a Minikube
+running locally, but for debug purposes they need to be running their local code.
+
+To add to the complexity, the code lives in a Lerna monorepo, which means that when developing
+locally there are symbolic links from the node_modules in the server module into other packages
+in the repository.
+
+The starting point for investigation will be a simple file watcher app, and then I will extend
+it to cover a more representative example with multiple services depending on symlinked modules.
 
 # Building up an an example
 
@@ -76,19 +82,21 @@ touch monitor/foo.txt
 
 ## Running in k8s
 
-The file `basic-deployment.yml` will start a pod with using the `local/watcher` image. **Note** The pod is defined with an `ImagePullPolicy` of `Never` to ensure the locally built version is used.
+The file `basic-deployment.yml` will create a Deployment running a single pod using the
+`local/watcher` image. **Note** The Pod template is defined with an `ImagePullPolicy` of
+`Never` to ensure the locally built version is used.
 
 The following command will deploy the pod and start following the logs:
 
 ```
 kubectl apply -f basic-deployment.yml
-kubectl logs -f monitor-pod
+kubectl logs -l app=monitor -f
 ```
 
-Now exec into the container with the follwing command:
+Now exec into the container with the following command:
 
 ```
-kubectl exec -it monitor-pod -- /bin/bash
+kubectl exec -it deploy/monitor-deployment -- /bin/bash
 ```
 
 And modify files in the monitor folder to see watcher output.
@@ -102,7 +110,7 @@ touch monitor/foo.txt
 To clean up, delete the pod by running:
 
 ```
-kubectl delete pod monitor-pod
+kubectl delete deployment monitor-deployment
 ```
 
 ## Deploying with a locally mounted volume
@@ -123,7 +131,7 @@ sed "s|CHANGE ME|$PWD/watcher/monitor|" mounted-deployment.yml | kubectl apply -
 Now in one terminal start following the logs
 
 ```
-kubectl logs -f monitor-pod
+kubectl logs -l app=monitor -f
 ```
 
 If you modify files in the `watcher/monitor` folder on your host you
@@ -135,60 +143,37 @@ events are fired inside the running container for changes on the host.
 To clean up, remove the pod, claim and volume by running
 
 ```
-kubectl delete pod monitor-pod
+kubectl delete deployment monitor-deployment
 kubectl delete pvc monitor-claim
 kubectl delete pv monitor-volume
 ```
 
 ## Updating a running deployment to use a mount
 
-Ideally we would deploy our 'normal' environment in an production representive
-manner (e.g. using `basic-deployment.yml`) and then add on the volume mapped to
-the host.
-
 The Peristent Volume and Persistent Volume Claim can be deployed separately
-to the pod. The file `local-volume.yml` can do this if applied with
+to the app. The file `local-volume.yml` can do this if applied with
 
 ```
 sed "s|CHANGE ME|$PWD/watcher/monitor|" local-volume.yml | kubectl apply -f -
 ```
 
-And we could then replace the pod deployed with `basic-deployment.yml` with one 
-that uses the existing volume as defined in `mount-existing.yml`.
+Deploy the basic deployment (so no mounted volume), and start following the logs:
 
 ```
-kubectl replace pod -f mount-existing.yml
+kubectl apply -f basic-deployment.yml
+kubectl logs -l app=monitor -f
 ```
 
-But this does a complete replace and if the settings don't match between the 
-original deployment and mount-existing.yml testing may not be representative.
+Changing files on the host will have no effect at this point.
 
-However, while there are some updates that can be made to a api resources while they
-are running using `kubectl patch`, unfortunately you are forbidden from
-adding a volume to an existing Pod. This means that the Pod will have to
-be destroyed and recreated, with the volume attached.
-
-This doesn't seem ideal for a development environment, where you may have
-scripts (or Helm charts) to deploy a representative environment and you
-just wish to update certain Pods for live updating.
-
-You can obtain a description of a running pod that is suitable for using with
-`kubectl apply` by running
+We can then use `kubectl patch` to update the Pod template defined in our Deployment to include
+the mount.
 
 ```
-kubectl get pod monitor-pod -o yaml
+kubectl patch deployment monitor-deployment --patch "$(cat add-mount.yml)"
 ```
 
-This can be piped directly into `kubectl replace` using like so:
-
-```
-kubectl get pod monitor-pod -o yaml | kubectl replace -f -
-```
-
-You could imagine a stage in between those two that updated the pod definition
-with the attached volume...
-
-The investigation continues!
+If you change files in the `watcher/monitor` folder you will see it reflected in the log output.
 
 ## Possible Minikube complexity...
 
