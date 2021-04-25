@@ -4,4 +4,5 @@
 2. ~~Add Docker file~~
 3. ~~Deploy to k8s~~
 4. ~~Show changing files inside container triggers the app~~
-5. Mount hostPath PV, show changing files **on host** triggers app
+5. ~~Mount hostPath PV, show changing files **on host** triggers app~~
+6. Update an existing deployment to use a mounted volume.

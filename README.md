@@ -139,3 +139,76 @@ kubectl delete pod monitor-pod
 kubectl delete pvc monitor-claim
 kubectl delete pv monitor-volume
 ```
+
+## Updating a running deployment to use a mount
+
+Ideally we would deploy our 'normal' environment in an production representive
+manner (e.g. using `basic-deployment.yml`) and then add on the volume mapped to
+the host.
+
+The Peristent Volume and Persistent Volume Claim can be deployed separately
+to the pod. The file `local-volume.yml` can do this if applied with
+
+```
+sed "s|CHANGE ME|$PWD/watcher/monitor|" local-volume.yml | kubectl apply -f -
+```
+
+And we could then replace the pod deployed with `basic-deployment.yml` with one 
+that uses the existing volume as defined in `mount-existing.yml`.
+
+```
+kubectl replace pod -f mount-existing.yml
+```
+
+But this does a complete replace and if the settings don't match between the 
+original deployment and mount-existing.yml testing may not be representative.
+
+However, while there are some updates that can be made to a api resources while they
+are running using `kubectl patch`, unfortunately you are forbidden from
+adding a volume to an existing Pod. This means that the Pod will have to
+be destroyed and recreated, with the volume attached.
+
+This doesn't seem ideal for a development environment, where you may have
+scripts (or Helm charts) to deploy a representative environment and you
+just wish to update certain Pods for live updating.
+
+You can obtain a description of a running pod that is suitable for using with
+`kubectl apply` by running
+
+```
+kubectl get pod monitor-pod -o yaml
+```
+
+This can be piped directly into `kubectl replace` using like so:
+
+```
+kubectl get pod monitor-pod -o yaml | kubectl replace -f -
+```
+
+You could imagine a stage in between those two that updated the pod definition
+with the attached volume...
+
+The investigation continues!
+
+## Possible Minikube complexity...
+
+**Note** I have done no testing with Minikube - caveat emptor!
+
+All of the examples in this repository have been run in Docker Desktop for Mac.
+There may be further complexities if running in (for example) Minikube because
+Docker Desktop does some sharing from the macos host to the VM running k8s
+automatically.
+
+It appears that Minikube needs to be started with the `--mount-string` option
+to enable this - see this
+[Stack Overflow](https://stackoverflow.com/questions/48534980/mount-local-directory-into-pod-in-minikube) answer.
+
+For simplicities sake it might be wise make the mounted path identical to the
+host path using something like:
+
+```
+minikube start --mount-string="$HOME:$HOME"
+```
+
+(Or possibly a subfolder of $HOME where your code is to avoid any risks around sharing the root
+of your home directory...)
