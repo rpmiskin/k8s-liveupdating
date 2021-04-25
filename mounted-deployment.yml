@@ -1,0 +1,51 @@
+#
+# Based on tutorial here: https://kubernetes.io/docs/tasks/configure-pod-container/configure-persistent-volume-storage/
+#
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: monitor-volume
+  labels:
+    type: local
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "CHANGE ME"
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: monitor-claim
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 3Gi
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: monitor-pod
+  labels:
+    app: monitor
+spec:
+  volumes:
+    - name: monitor-storage
+      persistentVolumeClaim:
+        claimName: monitor-claim
+  containers:
+    - name: monitor-container
+      image: local/watcher
+      imagePullPolicy: Never
+      volumeMounts:
+        - mountPath: "/usr/src/app/monitor"
+          name: monitor-storage

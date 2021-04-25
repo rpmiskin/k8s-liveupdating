@@ -41,7 +41,7 @@ will see messages like:
 add monitor/foo
 ```
 
-### Building the image
+## Building the image
 
 Run the following command to build and tag the Docker image.
 
@@ -52,7 +52,7 @@ docker build . -t local/watcher
 **Note** The later commands expect the image to have been tagged as
 `local/watcher`.
 
-### Running with Docker
+## Running with Docker
 
 The following command will then run the container with input/output to
 the current terminal (the `-it` flags). Pressing ctrl+C will kill the
@@ -74,7 +74,7 @@ And modify files in the monitor folder and see the watcher output.
 touch monitor/foo.txt
 ```
 
-### Running in k8s
+## Running in k8s
 
 The file `basic-deployment.yml` will start a pod with using the `local/watcher` image. **Note** The pod is defined with an `ImagePullPolicy` of `Never` to ensure the locally built version is used.
 
@@ -97,8 +97,45 @@ And modify files in the monitor folder to see watcher output.
 touch monitor/foo.txt
 ```
 
+### Clean up
+
 To clean up, delete the pod by running:
 
 ```
 kubectl delete pod monitor-pod
+```
+
+## Deploying with a locally mounted volume
+
+So far we've shown that the `watcher` app works inside a container, but that doesn't really help the
+development workflow problem if live updating code. It would be _much_ more useful if the `watcher`
+app was looking at a local filesystem. This can be done my mounting a Persistent Volume with `hostPath`
+and then linking it the the pod via an associated Persistent Volume Claim. The file
+`mounted-deployment.yml` will set up exactly this configuration, although as the path to the
+Persistent Volume must be absolute some `sed` is needed to modify the file.
+
+Deploy using the following command
+
+```
+sed "s|CHANGE ME|$PWD/watcher/monitor|" mounted-deployment.yml | kubectl apply -f -
+```
+
+Now in one terminal start following the logs
+
+```
+kubectl logs -f monitor-pod
+```
+
+If you modify files in the `watcher/monitor` folder on your host you
+should see files messages appear in the logs. This demonstrates that
+events are fired inside the running container for changes on the host.
+
+### Clean up
+
+To clean up, remove the pod, claim and volume by running
+
+```
+kubectl delete pod monitor-pod
+kubectl delete pvc monitor-claim
+kubectl delete pv monitor-volume
 ```
