@@ -1,0 +1,16 @@
+spec:
+  template:
+    spec:
+      volumes:
+        - name: source-storage
+          persistentVolumeClaim:
+            claimName: source-claim
+      containers:
+        - name: monitor-container
+          image: local/nodemon
+          command: ["nodemon"]
+          args: ["server.js"]
+          workingDir: /mounted/source
+          volumeMounts:
+            - mountPath: "/mounted/source"
+              name: source-storage

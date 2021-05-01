@@ -175,9 +175,93 @@ kubectl patch deployment monitor-deployment --patch "$(cat add-mount.yml)"
 
 If you change files in the `watcher/monitor` folder you will see it reflected in the log output.
 
-## Possible Minikube complexity...
+## Update deployment for live update
 
-**Note** I have done no testing with Minikube - caveat emptor!
+To show live updating of our service based upon the code we need to make use of a tool like
+[nodemon](https://nodemon.io). The same approach to patching a deployment can be used for this,
+we need patch the deployment so it is our local code that is being run, and also to switch
+out the base image to use `nodemon` to run the code.
+
+### nodemon image
+
+The folder `nodemon` contains a simple Dockerfile that installs `nodemon` into a node base image.
+From the root of the repository, build the image using:
+
+```
+cd nodemon
+docker build -t local/nodemon .
+```
+
+### Create a source volume
+
+Use the following command to create a source volume.
+
+```
+sed "s|CHANGE ME|$PWD/watcher|" source-volume.yml | kubectl apply -f -
+```
+
+### Patch the deployment
+
+Now we can patch the deployment to do the following:
+
+1. Mount the PVC at `/mounted/source`
+2. Change the workingDir to be `/mounted/source` (so we definitely run local code)
+3. Change the base image to be `local/nodemon`
+4. Change the `command` and `args` so the container runs the command `nodemon server.js`.
+
+Run the patch with the following command:
+
+```
+kubectl patch deployment monitor-deployment --patch "$(cat add-live-updating.yml)"
+```
+
+Once the deployment has completed and the pod is running, you follow the logs using
+
+```
+kubectl logs -f deployment/monitor-deployment
+```
+
+The output should now include the lines like:
+
+```
+[nodemon] 2.0.7
+[nodemon] to restart at any time, enter `rs`
+[nodemon] watching path(s): *.*
+[nodemon] watching extensions: js,mjs,json
+[nodemon] starting `node server.js`
+```
+
+If you change the file `server.js` on the host you should see output like
+
+```
+[nodemon] restarting due to changes...
+[nodemon] starting `node server.js`
+```
+
+# Further notes
+
+## What about lerna?
+
+The starting point for this investigation was to support `lerna`, but the
+examples do not make use of it - what gives?
+
+Once you can mount a local path into your pod and also configure the working
+directory it turns out that symbolic links as used by `lerna bootstrap` are
+a non-issue.
+
+If using a monorepo you should mount the root of the repo into your Pod
+but set the workingDir into the package you wish to run. This will mean that
+any symbolic links can still be resolved as they are created with relative paths and the entire monorepo is available in the Pod.
+
+## Configuring nodemon
+
+This example runs nodemon in a pretty vanilla manner. There are various additional options that might be useful such as configuring which folders are monitored, specifying files to ignore, and controlling the time between a change being noticed and the restart. Depending on your workflow you may want to configure these to improve performance.
+
+## Possible Minikube complexities
+
+**Note** I have done limited testing with Minikube - caveat emptor!
+
+### Mounting local files
 
 All of the examples in this repository have been run in Docker Desktop for Mac.
 There may be further complexities if running in (for example) Minikube because
@@ -188,12 +272,30 @@ It appears that Minikube needs to be started with the `--mount-string` option
 to enable this - see this
 [Stack Overflow](https://stackoverflow.com/questions/48534980/mount-local-directory-into-pod-in-minikube) answer.
 
-For simplicities sake it might be wise make the mounted path identical to the
-host path using something like:
+To ensure consistency for multiple developers it might make sense to translate from where code
+lives on the host to a consistent location (e.g `/mnt/source`) inside of minikube. Then all yml
+files that are used to patch the running deployment can use the consistent paths:
 
 ```
-minikube start --mount-string="$HOME:$HOME"
+minikube start -p minikube --driver=docker --mount-string="/local/path/to/repository:/mnt/source/repository" --mount
 ```
 
-(Or possibly a subfolder of $HOME where your code is to avoid any risks around sharing the root
-of your home directory...)
+**Notes**
+
+1. The docker driver does not appear to allow you to change the mount on a running node, you may need run `minikube delete` to remove your existing node
+2. At least with the version of minikube and the docker driver that I tested with, the `--mount` and
+   `--mount-string` options only worked when a profile is specified, _even_ if the profile name supplied
+   is the same as the default.
+
+### Accessing locally built images
+
+While Docker Desktop for Mac makes locally built images available immediately inside the k8s cluster
+the same is not true for minikube unless you are using the `none` driver.
+There are various suggested options to make images available, possibly the simplest is to run
+something like the followin after your image has been built and tagged.
+
+```
+minikube image add local/nodemon
+```
+
+Further options [here](https://minikube.sigs.k8s.io/docs/handbook/pushing/)
